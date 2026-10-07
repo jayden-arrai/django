@@ -61,6 +61,11 @@ Minor features
 * The default iteration count for the PBKDF2 password hasher is increased from
   1,500,000 to 1,800,000.
 
+* The new :setting:`AUTH_PERMISSIONS_MAP` setting allows customizing
+  the action component of built-in permission codenames (e.g. renaming ``add``
+  to ``create``). The new :djadmin:`renameperms` management command migrates
+  permissions already stored in the database to the new names.
+
 :mod:`django.contrib.contenttypes`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

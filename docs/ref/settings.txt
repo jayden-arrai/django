@@ -3417,6 +3417,47 @@ A list of authentication backend classes (as strings) to use when attempting to
 authenticate a user. See the :ref:`authentication backends documentation
 <authentication-backends>` for details.
 
+.. setting:: AUTH_PERMISSIONS_MAP
+
+``AUTH_PERMISSIONS_MAP``
+--------------------------------
+
+.. versionadded:: 6.2
+
+Default: ``{}``
+
+A dictionary mapping built-in permission action names to custom names. This
+affects both the permission codename stored in the database and the
+human-readable permission name.
+
+For example, to use CRUDL naming conventions instead of Django's defaults::
+
+    AUTH_PERMISSIONS_MAP = {
+        "add": "create",
+        "change": "update",
+        "view": "read",
+    }
+
+With this setting, a model ``MyModel`` would have codenames
+``create_mymodel``, ``update_mymodel``, ``read_mymodel``, and
+``delete_mymodel`` instead of the defaults ``add_mymodel``,
+``change_mymodel``, ``view_mymodel``, and ``delete_mymodel``.
+
+Note that "list" is not one of Django's default permissions. To include it,
+set :attr:`~django.db.models.Options.default_permissions` in your model's
+``Meta``::
+
+    class MyModel(models.Model):
+        class Meta:
+            default_permissions = ("create", "read", "update", "delete", "list")
+
+.. note::
+
+    Changing this setting after permissions have been created in the database
+    will not automatically rename existing permissions. Run the
+    :djadmin:`renameperms` management command once to rename any permissions
+    already stored.
+
 .. setting:: AUTH_USER_MODEL
 
 ``AUTH_USER_MODEL``

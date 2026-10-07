@@ -236,6 +236,29 @@ def check_models_permissions(app_configs, **kwargs):
     return errors
 
 
+def check_permission_map(app_configs, **kwargs):
+    errors = []
+    codename_map = settings.AUTH_PERMISSIONS_MAP
+    if not isinstance(codename_map, dict):
+        errors.append(
+            checks.Error(
+                "AUTH_PERMISSIONS_MAP must be a dict.",
+                id="auth.E014",
+            )
+        )
+    elif not all(
+        isinstance(k, str) and isinstance(v, str)
+        for k, v in codename_map.items()
+    ):
+        errors.append(
+            checks.Error(
+                "AUTH_PERMISSIONS_MAP must only contain string keys and values.",
+                id="auth.E014",
+            )
+        )
+    return errors
+
+
 def check_middleware(app_configs, **kwargs):
     errors = []
 

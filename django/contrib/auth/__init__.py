@@ -364,6 +364,7 @@ def get_permission_codename(action, opts):
     """
     Return the codename of the permission for the specified action.
     """
+    action = settings.AUTH_PERMISSIONS_MAP.get(action, action)
     return "%s_%s" % (action, opts.model_name)
 
 

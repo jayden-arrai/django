@@ -10,6 +10,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_permission_codename, management
 from django.contrib.auth.management import (
+    _get_builtin_permissions,
     create_permissions,
     get_default_username,
 )
@@ -1953,3 +1954,198 @@ class CreatePermissionsMultipleDatabasesTests(TestCase):
             create_permissions(apps.get_app_config("auth"), verbosity=0, using="other")
         self.assertIn("INSERT INTO", captured_queries[-1]["sql"].upper())
         self.assertGreater(Permission.objects.using("other").count(), 0)
+
+
+class PermissionMapTests(TestCase):
+    """Tests for AUTH_PERMISSIONS_MAP. Refs #98765."""
+
+    def setUp(self):
+        self._original_default_permissions = Permission._meta.default_permissions
+        self.app_config = apps.get_app_config("auth")
+
+    def tearDown(self):
+        Permission._meta.default_permissions = self._original_default_permissions
+        ContentType.objects.clear_cache()
+
+    def _make_opts(self, default_permissions, model_name="widget", verbose_name_raw="widget"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            default_permissions=default_permissions,
+            model_name=model_name,
+            verbose_name_raw=verbose_name_raw,
+        )
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create", "view": "read"})
+    def test_get_builtin_permissions_with_mapping(self):
+        """Mapped actions produce updated codenames and display names."""
+        opts = self._make_opts(("add", "change", "delete", "view"))
+        self.assertEqual(
+            _get_builtin_permissions(opts),
+            [
+                ("create_widget", "Can create widget"),
+                ("change_widget", "Can change widget"),
+                ("delete_widget", "Can delete widget"),
+                ("read_widget", "Can read widget"),
+            ],
+        )
+
+    @override_settings(AUTH_PERMISSIONS_MAP={})
+    def test_get_builtin_permissions_default(self):
+        """Empty mapping leaves behavior unchanged."""
+        opts = self._make_opts(("add", "change", "delete", "view"))
+        self.assertEqual(
+            _get_builtin_permissions(opts),
+            [
+                ("add_widget", "Can add widget"),
+                ("change_widget", "Can change widget"),
+                ("delete_widget", "Can delete widget"),
+                ("view_widget", "Can view widget"),
+            ],
+        )
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "write", "view": "write"})
+    def test_dedup_protection(self):
+        """Two actions mapping to the same codename produce only one permission."""
+        opts = self._make_opts(("add", "change", "delete", "view"))
+        perms = _get_builtin_permissions(opts)
+        codenames = [codename for codename, _ in perms]
+        self.assertEqual(codenames.count("write_widget"), 1)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create", "view": "read"})
+    def test_create_permissions_uses_mapping(self):
+        """Permissions created in the database use the mapped codenames."""
+        permission_content_type = ContentType.objects.get_by_natural_key(
+            "auth", "permission"
+        )
+        Permission.objects.filter(content_type=permission_content_type).delete()
+        create_permissions(self.app_config, verbosity=0)
+        codenames = set(
+            Permission.objects.filter(
+                content_type=permission_content_type,
+            ).values_list("codename", flat=True)
+        )
+        self.assertIn("create_permission", codenames)
+        self.assertIn("read_permission", codenames)
+        self.assertIn("change_permission", codenames)
+        self.assertIn("delete_permission", codenames)
+        self.assertNotIn("add_permission", codenames)
+        self.assertNotIn("view_permission", codenames)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create", "view": "read"})
+    def test_get_permission_codename_with_mapping(self):
+        """get_permission_codename() applies AUTH_PERMISSIONS_MAP."""
+        opts = self._make_opts(())
+        self.assertEqual(get_permission_codename("add", opts), "create_widget")
+        self.assertEqual(get_permission_codename("view", opts), "read_widget")
+        self.assertEqual(get_permission_codename("change", opts), "change_widget")
+        self.assertEqual(get_permission_codename("delete", opts), "delete_widget")
+
+    @override_settings(AUTH_PERMISSIONS_MAP={})
+    def test_get_permission_codename_default(self):
+        """get_permission_codename() with empty map returns default names."""
+        opts = self._make_opts(())
+        self.assertEqual(get_permission_codename("add", opts), "add_widget")
+        self.assertEqual(get_permission_codename("view", opts), "view_widget")
+
+    @override_settings(AUTH_PERMISSIONS_MAP={})
+    def test_crudl_default_permissions_no_mapping(self):
+        """
+        A model using CRUDL names directly in default_permissions requires no
+        mapping. "list" is not remapped, and all five permissions are produced.
+        Refs #98765.
+        """
+        opts = self._make_opts(("create", "read", "update", "delete", "list"))
+        self.assertEqual(
+            _get_builtin_permissions(opts),
+            [
+                ("create_widget", "Can create widget"),
+                ("read_widget", "Can read widget"),
+                ("update_widget", "Can update widget"),
+                ("delete_widget", "Can delete widget"),
+                ("list_widget", "Can list widget"),
+            ],
+        )
+
+
+class RenamePermsCommandTests(TestCase):
+    """Tests for the renameperms management command. Refs #98765."""
+
+    def setUp(self):
+        self.permission_ct = ContentType.objects.get_for_model(Permission)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create", "view": "read"})
+    def test_renames_permissions(self):
+        """Basic rename: old codenames are replaced by the mapped ones."""
+        stdout = StringIO()
+        call_command("renameperms", verbosity=1, stdout=stdout)
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="add_permission"
+            ).exists()
+        )
+        self.assertTrue(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="create_permission"
+            ).exists()
+        )
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="view_permission"
+            ).exists()
+        )
+        self.assertTrue(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="read_permission"
+            ).exists()
+        )
+        self.assertIn("Renamed", stdout.getvalue())
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create"})
+    def test_dry_run_makes_no_changes(self):
+        """--dry-run shows planned renames without modifying the database."""
+        stdout = StringIO()
+        call_command("renameperms", dry_run=True, verbosity=1, stdout=stdout)
+        self.assertTrue(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="add_permission"
+            ).exists()
+        )
+        self.assertFalse(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="create_permission"
+            ).exists()
+        )
+        self.assertIn("Would rename", stdout.getvalue())
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create"})
+    def test_conflict_is_reported_and_skipped(self):
+        """A codename conflict is reported and the source permission is left in place."""
+        Permission.objects.create(
+            codename="create_permission",
+            name="Can create permission",
+            content_type=self.permission_ct,
+        )
+        stderr = StringIO()
+        call_command("renameperms", verbosity=0, stderr=stderr)
+        self.assertTrue(
+            Permission.objects.filter(
+                content_type=self.permission_ct, codename="add_permission"
+            ).exists()
+        )
+        self.assertIn("already exists", stderr.getvalue())
+
+    @override_settings(AUTH_PERMISSIONS_MAP={})
+    def test_empty_mapping_exits_early(self):
+        """An empty AUTH_PERMISSIONS_MAP produces a warning and exits."""
+        stdout = StringIO()
+        call_command("renameperms", verbosity=1, stdout=stdout)
+        self.assertIn("empty", stdout.getvalue().lower())
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create"})
+    def test_idempotent(self):
+        """Running renameperms a second time finds nothing to rename."""
+        call_command("renameperms", verbosity=0)
+        stdout = StringIO()
+        call_command("renameperms", verbosity=1, stdout=stdout)
+        self.assertIn("0 permission(s)", stdout.getvalue())

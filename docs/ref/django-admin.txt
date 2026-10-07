@@ -1806,6 +1806,36 @@ example, it could be useful if you have a ``ForeignKey`` in
 allow creating an instance instead of entering the primary key of an existing
 instance.
 
+``renameperms``
+~~~~~~~~~~~~~~
+
+.. django-admin:: renameperms
+
+.. versionadded:: 6.2
+
+This command is only available if Django's :doc:`authentication system
+</topics/auth/index>` (``django.contrib.auth``) is installed.
+
+Renames built-in permission codenames and human-readable labels in the database
+to match the :setting:`AUTH_PERMISSIONS_MAP` setting. Run this command
+once after setting :setting:`AUTH_PERMISSIONS_MAP` on an existing site
+to migrate permissions that were already created under the default names.
+
+.. django-admin-option:: --database DATABASE
+
+Specifies the database to update. Defaults to ``default``.
+
+.. django-admin-option:: --dry-run
+
+Displays what would be renamed without making any changes.
+
+Example usage:
+
+.. console::
+
+    django-admin renameperms --dry-run
+    django-admin renameperms
+
 ``django.contrib.contenttypes``
 -------------------------------
 

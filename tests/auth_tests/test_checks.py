@@ -1,6 +1,7 @@
 from django.contrib.auth.checks import (
     check_middleware,
     check_models_permissions,
+    check_permission_map,
     check_user_model,
 )
 from django.contrib.auth.middleware import (
@@ -492,3 +493,38 @@ class MiddlewareChecksTests(SimpleTestCase):
                 )
             ],
         )
+
+
+class PermissionMapCheckTests(SimpleTestCase):
+    """Tests for the AUTH_PERMISSIONS_MAP system check. Refs #98765."""
+
+    @override_settings(AUTH_PERMISSIONS_MAP="not-a-dict")
+    def test_not_a_dict(self):
+        errors = check_permission_map(None)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].id, "auth.E014")
+        self.assertIn("must be a dict", errors[0].msg)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={1: "create"})
+    def test_non_string_key(self):
+        errors = check_permission_map(None)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].id, "auth.E014")
+        self.assertIn("string keys and values", errors[0].msg)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": 42})
+    def test_non_string_value(self):
+        errors = check_permission_map(None)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].id, "auth.E014")
+        self.assertIn("string keys and values", errors[0].msg)
+
+    @override_settings(AUTH_PERMISSIONS_MAP={"add": "create", "view": "read"})
+    def test_valid_mapping(self):
+        errors = check_permission_map(None)
+        self.assertEqual(errors, [])
+
+    @override_settings(AUTH_PERMISSIONS_MAP={})
+    def test_empty_dict(self):
+        errors = check_permission_map(None)
+        self.assertEqual(errors, [])

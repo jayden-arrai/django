@@ -1,0 +1,15 @@
+This project folder is the latest django project code.
+
+In a project of ours that uses django, we needed to patch django to deal with permission name changes we wanted.  I've included the 'patch_django.py' file that we added to the project, so we could patch the permission names.
+
+The code needed to patch django early enough for migrations to also acquire the permission name changes, so the patch_django.py file was imported at the bottom of the settings.py in the project.
+
+Would you be able to figure out a way to take the patch we created and turn it into a new django setting or settings, so users wouldn't need to patch django to do this?
+
+Django is very specific about how it wants things to be done, because it is a project used by a lot of people.  The webpage at 'https://docs.djangoproject.com/en/dev/internals/contributing/' has sections for 'Contributing code' and 'Contributing documentation'.  Another webpage at 'https://docs.djangoproject.com/en/6.0/intro/contributing/' has information about writing tests.
+
+These changes will need to have documentation and tests created for the code changes.
+
+I haven't created a ticket or branch for this yet, so if anything needs to refer to a ticket number, use '98765', which seems to only exist as part of one test, which will make it easy for me to find these occurrences, and update them to the correct number.
+
+I assume this is going to take a while to do, so please don't run the tests, I can do that myself.

@@ -534,6 +534,8 @@ CACHE_MIDDLEWARE_ALIAS = "default"
 
 AUTH_USER_MODEL = "auth.User"
 
+AUTH_PERMISSIONS_MAP = {}
+
 AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.ModelBackend"]
 
 LOGIN_URL = "/accounts/login/"
